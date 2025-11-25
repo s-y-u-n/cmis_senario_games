@@ -1,16 +1,21 @@
-# cmis_senario_games 基本設計書（Buldyrev et al. パターン）
+# cmis_senario_games 基本設計書（共通フレームワーク）
 
-本ドキュメントは、GitHub リポジトリ `cmis_senario_games` の基本設計を示す。  
-第1弾として、Buldyrev et al. (2010) の相互依存ネットワーク・パーコレーションモデルを  
-「防護型ゲーム（Protection Game）」として実装するパターンを中心に記述する。
+本ドキュメントは、GitHub リポジトリ `cmis_senario_games` の「共通フレームワーク」と
+その設計方針を示す。  
+個々の論文パターン（Buldyrev2010 など）の詳細は、別途シナリオごとの設計書で扱う。
 
-将来的には、
+本フレームワークで一番大きい要件・流れは、どの論文パターンでも共通して次の 3 段階で構成される：
 
-- 防護型（Protection）
-- 被害削減量（Damage Reduction）
-- クレジット配分（Credit Allocation）
+1. **プレイヤーを設定する**  
+   - 例: 各ノード、ノードペア、リンク集合、施設グループなど。
+2. **特性関数 v(S) を計算する**  
+   - 任意の「プレイヤー集合 S」に対して、レジリエンス指標などの値 v(S) を返す。
+   - ここで各論文固有の物理・確率モデル（パーコレーション、カスケード等）が登場する。
+3. **貢献度指標を計算する**  
+   - 例: Shapley 値、lex-cel ランク付けなど。
+   - v(S) を「ブラックボックス」として扱い、その上で協力ゲーム理論の指標を計算する。
 
-の 3 フレームワーク × 約 3 本の論文パターンを並列で管理・実装する構成を想定する。
+以下では、この 3 段階フローを軸に、共通部分と拡張ポイントを整理する。
 
 ---
 
@@ -25,8 +30,8 @@ cmis_senario_games/
   pyproject.toml / setup.cfg          # Python パッケージ定義
   .gitignore
   docs/
-    design_cmis_senario_games.md      # 本ドキュメント
-    scenario_buldyrev2010.md          # Buldyrev 特化の理論・仕様
+    design_cmis_senario_games.md      # 本ドキュメント（共通フレームワーク）
+    scenario_buldyrev2010.md          # Buldyrev2010 特化の理論・仕様
     scenarios_overview.md             # 全シナリオ一覧と対応表
   src/
     cmis_senario_games/
@@ -88,9 +93,62 @@ cmis_senario_games/
 
 ---
 
-## 2. ドメインモデル設計
+## 2. ゲーム実行の基本フロー（プレイヤー → v → 貢献度）
 
-### 2.1 コアの抽象モデル
+### 2.1 プレイヤーを設定する
+
+- プレイヤー集合は、各シナリオごとに「誰の貢献度を知りたいか」を定義する。
+- 典型的には:
+  - ノード（インフラ施設、需要点）
+  - ノードペア（2層ネットワークの (A_i, B_i) ペア）
+  - サブネットワーク（地理ブロック、事業者など）
+- 実装上は、多くのケースで
+  - プレイヤー = `0..N-1` のインデックス
+  - `coalition: np.ndarray[bool]` で「プレイヤーが集合 S に含まれるか」を表現
+  - この `N` が `ValueFunction.evaluate()` の入力次元、および Shapley などの `num_players` となる。
+
+プレイヤーの意味付け（ノードなのか、ノードペアなのか）はシナリオ側（`src/cmis_senario_games/scenarios/...`）で決める。
+
+### 2.2 特性関数 v(S) を計算する
+
+- 特性関数 v(S) は「プレイヤー集合 S が与えられたときのシステム性能」を返す。
+- 抽象的には `ValueFunction` プロトコルで定義される（後述）。
+- 具体的な v(S) の定義はフレームワークごとに異なる:
+  - Protection: 「S を防護したときのレジリエンス指標（例: MCGC サイズの期待値）」など。
+  - Damage Reduction: 「被害総量の減少」など。
+  - Credit Allocation: 「ある指標の寄与度にもとづくクレジット配分」など。
+
+**重要:**  
+v(S) を計算する内部ロジックとして、シナリオ固有の
+
+- パーコレーション
+- カスケード（連鎖故障）
+
+といったダイナミクスが登場する。  
+本設計書の **3. ドメインモデル設計** および **4. パーコレーション + カスケードエンジン** は、
+この「v(S) を評価するためのサブロジック」を定義しているだけであり、
+
+- 「プレイヤーをどう定義するか」
+- 「Shapley などの貢献度指標をどう計算するか」
+
+には直接関与しない。
+
+### 2.3 貢献度指標を計算する
+
+- 一度 v(S) を評価できれば、協力ゲーム理論の標準手続きを適用できる:
+  - Shapley 値: プレイヤーごとの限界貢献度の期待値。
+  - Banzhaf 値: 連立におけるスイングの期待値（必要なら追加）。
+  - lex-cel ランク: 複数指標をまとめたランキングルール。
+- フレームワークに依存しない **共通アルゴリズム** として、
+  - `src/cmis_senario_games/core/contribution_shapley.py`
+  - `src/cmis_senario_games/core/contribution_lexcel.py`
+  を実装し、`ValueFunction` をブラックボックスとして扱う。
+
+---
+
+## 3. ドメインモデル設計
+
+### 3.1 コアの抽象モデル（ネットワーク）
 
 `src/cmis_senario_games/core/network_model.py`
 
@@ -109,12 +167,21 @@ class MultiLayerNetwork:
     # ノード ID は 0..N-1 を共有し、依存関係で層を跨いで紐づく
 ```
 
+Multi-layer の構造は、いずれの論文パターンでも共通の表現を使い、
+
+- 単層グラフ（1 layer）
+- 2 層相互依存ネットワーク（Buldyrev2010 など）
+- 3 層以上の多層ネットワーク
+
+を `layers` の中身だけ差し替えて表現する。
+
+### 3.2 依存関係（Interdependency）
+
 `src/cmis_senario_games/core/interdependency.py`
 
 ```python
 @dataclass
 class DependencyMapping:
-    # Buldyrev2010 では 1:1 双方向依存
     # dep_A_to_B[i] = j  (A 層の i が B 層の j に依存)
     dep_A_to_B: np.ndarray
     dep_B_to_A: np.ndarray        # 通常は dep_A_to_B の逆写像
@@ -126,37 +193,27 @@ class InterdependentSystem:
     dependency: DependencyMapping
 ```
 
-Buldyrev2010 シナリオは、`InterdependentSystem` の特殊ケースとして
-
-- 層数 = 2
-- 依存リンク = 1:1 双方向
-
-を仮定する。
-
-### 2.2 シナリオごとのゲームタイプ
-
-「3フレームワーク」を共通インターフェースで扱うため、`GameType` を定義する。
-
-```python
-from enum import Enum
-
-
-class GameType(Enum):
-    PROTECTION = "protection"          # 防護型
-    DAMAGE_REDUCTION = "damage_reduction"
-    CREDIT_ALLOCATION = "credit_allocation"
-```
-
-Buldyrev2010 の基本パターンは `GameType.PROTECTION` に該当する。
+- `InterdependentSystem` は、「ネットワーク構造」と「層間依存関係」をまとめたコア構造。
+- Buldyrev2010 シナリオは、その特殊ケースとして
+  - 層数 = 2
+  - 依存リンク = 1:1 双方向
+  を仮定する。詳細は `docs/scenario_buldyrev2010.md` を参照。
 
 ---
 
-## 3. パーコレーション + カスケードエンジン
+## 4. v(S) 内部ロジック：パーコレーション + カスケードエンジン
+
+このセクションで定義するモジュールは、**2.2「v(S) を計算する」の内部ロジック** であり、
+
+- プレイヤーの定義や Shapley 計算とは独立した「システムダイナミクス」のみを扱う。
+- どの論文パターンでも、必要に応じてこれらの組み合わせ・変種を用いる。
+
+### 4.1 パーコレーション（初期故障のサンプリング）
 
 `src/cmis_senario_games/core/percolation.py`
 
 - ノード単位での生残確率 (p) に基づき、初期故障状態を生成。
-- ゲームごとに「防護集合 (S)」などを考慮した修正状態を生成。
+- ゲームごとに「防護集合 (S)」などを考慮した修正状態を生成（これは各 `ValueFunction` 側で行う）。
 
 ```python
 @dataclass
@@ -170,12 +227,13 @@ def sample_initial_failure(system: InterdependentSystem,
     """
     戻り値: alive_mask (shape: (N,), bool)
     """
-    ...
 ```
+
+### 4.2 カスケードエンジン（連鎖故障）
 
 `src/cmis_senario_games/core/cascade_engine.py`
 
-- Buldyrev のアルゴリズムに従い、互いに依存する 2 層ネットワーク上での cascading failure を実装。
+- 相互依存ネットワーク上での cascading failure を実装する窓口。
 - 入力:
   - `InterdependentSystem`
   - 初期 `alive_mask`（ゲームごとの防護集合適用後）
@@ -196,13 +254,32 @@ def run_cascade(system: InterdependentSystem,
     ...
 ```
 
+- Buldyrev2010 の 2 層 1:1 依存カスケードは、この `run_cascade` の具体実装パターンの 1 つであり、
+  詳細はシナリオ設計書 `docs/scenario_buldyrev2010.md` で扱う。
+- 他の論文パターン（例: 多層依存、時間遅れ等）があれば、
+  仕様に応じたカスケードロジックをこのレイヤ、もしくは scenario 側で差し替える。
+
 ---
 
-## 4. 特性関数 (v(S)) の共通定義
+## 5. 特性関数 (v(S)) の共通定義
 
 `src/cmis_senario_games/core/value_functions.py`
 
-### 4.1 抽象インターフェース
+### 5.1 ゲームタイプ
+
+「3 フレームワーク」を共通インターフェースで扱うため、`GameType` を定義する。
+
+```python
+from enum import Enum
+
+
+class GameType(Enum):
+    PROTECTION = "protection"          # 防護型
+    DAMAGE_REDUCTION = "damage_reduction"
+    CREDIT_ALLOCATION = "credit_allocation"
+```
+
+### 5.2 抽象インターフェース `ValueFunction`
 
 ```python
 class ValueFunction(Protocol):
@@ -216,61 +293,28 @@ class ValueFunction(Protocol):
         ...
 ```
 
-### 4.2 Buldyrev2010 防護型ゲームの特性関数
+- `coalition` は「プレイヤー集合 S」を表現するブール配列。
+- `evaluate()` は、内部で
+  - パーコレーション (`sample_initial_failure`)
+  - カスケード (`run_cascade`)
+  - その他、シナリオ固有のロジック
+  を呼び出して v(S) を計算する。
+- 具体的な Protection / Damage Reduction / Credit Allocation 各パターンの `ValueFunction` 実装は、
+  `src/cmis_senario_games/scenarios/<paper_short_name>/` 側に置く。
 
-Buldyrev2010 / Protection:
-
-- coalition (S) = 防護対象ノード集合
-- 特性関数:
-
-\\[
-v(S) = \\mathbb{E}_\\omega[ F_S(\\omega) ]
-\\]
-
-`F_S(ω)` = MCGC の相対サイズ（cascading failure 後）。
-
-`src/cmis_senario_games/scenarios/buldyrev2010/value_protection.py`
-
-```python
-@dataclass
-class BuldyrevProtectionConfig:
-    percolation: PercolationParams
-    num_scenarios: int
-    performance_metric: str = "mcgc_size"  # デフォルト MCGC 相対サイズ
-
-
-class BuldyrevProtectionValue(ValueFunction):
-    game_type = GameType.PROTECTION
-
-    def __init__(self,
-                 system: InterdependentSystem,
-                 config: BuldyrevProtectionConfig):
-        self.system = system
-        self.config = config
-
-    def evaluate(self, coalition: np.ndarray) -> float:
-        """
-        coalition[i] = True のノードは「常に生き残る」と解釈。
-        Monte Carlo により v(S) を近似。
-        """
-        total = 0.0
-        for _ in range(self.config.num_scenarios):
-            alive0 = sample_initial_failure(self.system, self.config.percolation)
-            alive0[coalition] = True  # 防護
-            result = run_cascade(self.system, alive0)
-            total += result.m_infty
-        return total / self.config.num_scenarios
-```
+Buldyrev2010 における Protection 型特性関数の詳細は、
+`docs/scenario_buldyrev2010.md` を参照。
 
 ---
 
-## 5. 貢献度評価（Shapley / lex-cel）
+## 6. 貢献度評価（Shapley / lex-cel）
 
-### 5.1 Shapley 値
+### 6.1 Shapley 値
 
 `src/cmis_senario_games/core/contribution_shapley.py`
 
-- 汎用的に「任意の `ValueFunction` に対して Shapley を近似」。
+- フレームワーク・シナリオに依存しない汎用実装として、
+  「任意の `ValueFunction` に対して Shapley を近似」する。
 
 ```python
 @dataclass
@@ -286,20 +330,22 @@ def estimate_shapley(value_fn: ValueFunction,
     Monte Carlo permutation sampling による Shapley 近似。
     戻り値: shape (num_players,)
     """
-    ...
 ```
 
-Buldyrev2010 シナリオで利用する場合：
+- `value_fn.evaluate()` をブラックボックスとして扱い、
+  ランダム順序のマージナル貢献度を平均する。
+- Buldyrev2010 の場合：
+  - プレイヤー = 各ノードまたはノードペア
+  - `value_fn` = Protection 型特性関数
+  - Shapley 値 = 「防護投資における限界レジリエンス貢献度」
+  として解釈できる（詳細はシナリオ設計書で扱う）。
 
-- プレイヤー = 各ノード（あるいはノードペア (A_i, B_i)）
-- `ValueFunction` = `BuldyrevProtectionValue`
-- Shapley 値 = 「防護投資における限界レジリエンス貢献度」
-
-### 5.2 lex-cel 型ランク付け
+### 6.2 lex-cel 型ランク付け
 
 `src/cmis_senario_games/core/contribution_lexcel.py`
 
-- 事前に計算された貢献度ベクトル（Shapley, Banzhaf など）から、特定の lexicographic + cell-based ルールで順位付けを行う。
+- 事前に計算された貢献度ベクトル（Shapley, Banzhaf など）から、
+  特定の lexicographic + cell-based ルールで順位付けを行う。
 
 ```python
 @dataclass
@@ -314,99 +360,10 @@ def rank_players_lexcel(contributions: np.ndarray,
     """
     戻り値: 順位（0=最上位）
     """
-    ...
 ```
 
----
-
-## 6. Buldyrev2010 シナリオのモジュール構成
-
-`src/cmis_senario_games/scenarios/buldyrev2010/` 以下に当該論文向けロジックを集約する。
-
-### 6.1 `network_definition.py`
-
-- ER / Scale-free / Random regular の生成
-- 実ネットワーク（イタリア停電）読み込みロジック
-
-```python
-def build_er_system(n: int, k_avg: float, seed: int) -> InterdependentSystem:
-    ...
-
-
-def build_sf_system(n: int, lambda_: float, k_min: int, seed: int) -> InterdependentSystem:
-    ...
-
-
-def build_real_italy_system(path_power: str,
-                            path_comm: str,
-                            path_dep: str) -> InterdependentSystem:
-    ...
-```
-
-### 6.2 `config_schema.py`
-
-- `configs/buldyrev2010/*.yaml` の構造を定義（pydantic / dataclasses での schema）。
-
-```yaml
-# configs/buldyrev2010/er_default.yaml
-scenario_name: "buldyrev2010_er_protection"
-game_type: "protection"
-network:
-  type: "er"
-  num_nodes: 50000
-  avg_degree: 4.0
-  seed: 42
-percolation:
-  survival_prob: 0.8
-  random_seed: 123
-value_function:
-  num_scenarios: 100
-  performance_metric: "mcgc_size"
-shapley:
-  num_samples: 500
-  random_seed: 999
-```
-
-### 6.3 `visualization.py`
-
-- Buldyrev 的な図を再現：
-  - (p) vs MCGC サイズ
-  - (p) vs 存在確率（P∞）
-  - ノード別 Shapley 値ヒートマップ（地理配置図 or 度数別）
-
-```python
-def plot_pc_curve(results_df: pd.DataFrame, output_path: str):
-    """
-    x: p, y: MCGC size / existence probability
-    """
-
-
-def plot_node_importance_shapley(phi: np.ndarray,
-                                 network: InterdependentSystem,
-                                 output_path: str):
-    """
-    ノード Shapley をネットワーク上に可視化。
-    """
-```
-
-### 6.4 `postprocess_metrics.py`
-
-- 実験結果から、
-  - 推定された臨界値 (p_c)
-  - 分布別脆弱性比較（ER vs SF vs RR）
-
-等を集計する。
-
-```python
-def estimate_pc_from_results(results_df: pd.DataFrame) -> float:
-    ...
-
-
-def summarize_v_results(results_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    coalition / node ごとの v 値の一覧を生成。
-    """
-```
+- 入力は単に「プレイヤーごとのスカラー指標」であり、
+  ここでも v(S) の中身やシナリオには依存しない。
 
 ---
 
@@ -415,11 +372,17 @@ def summarize_v_results(results_df: pd.DataFrame) -> pd.DataFrame:
 `src/cmis_senario_games/core/experiment_runner.py`
 
 - YAML の experiment 定義を読み込み、
-- シナリオごとの network 構築
-- `ValueFunction` 構築
-- Shapley / lex-cel 実行
-- 結果を `outputs/results/` 以下に保存
-- 図を `outputs/figures/` に保存
+  3 段階フローを自動的につなぐ役割を持つ:
+  1. **プレイヤーを設定する**
+     - シナリオモジュール（例: `scenarios/buldyrev2010/network_definition.py`）から
+       ネットワーク・依存関係を構築し、プレイヤー集合を暗黙的に決める。
+  2. **v(S) を計算する**
+     - シナリオモジュールの `ValueFunction` 実装を構築。
+     - 必要に応じてパーコレーション + カスケードエンジンを内部で利用。
+  3. **貢献度指標を計算する**
+     - `estimate_shapley` や `rank_players_lexcel` を呼び出し、
+       `outputs/results/` 以下に保存。
+- 併せて、図を `outputs/figures/` に保存する責務も持つ。
 
 ```python
 def run_experiment(experiment_config_path: str):
@@ -444,7 +407,7 @@ python -m cmis_senario_games.run_experiment \
 
 ### 8.1 v の結果一覧
 
-`io_results.py` で統一フォーマットを定義：
+`src/cmis_senario_games/core/io_results.py` で統一フォーマットを定義：
 
 ```python
 @dataclass
@@ -458,7 +421,13 @@ class ValueResult:
 
 CSV / Parquet 形式で保存：
 
-`outputs/results/buldyrev2010/node_importance_shapley/v_values.parquet`
+```text
+outputs/results/<scenario_name>/<experiment_name>/v_values.parquet
+```
+
+Buldyrev2010 の例：
+
+- `outputs/results/buldyrev2010/node_importance_shapley/v_values.parquet`
 
 列例：
 
@@ -469,7 +438,13 @@ CSV / Parquet 形式で保存：
 
 ### 8.2 貢献度（Shapley / lex-cel）出力
 
-`outputs/results/buldyrev2010/node_importance_shapley/contribution.parquet`
+同様に、貢献度の結果を保存する：
+
+```text
+outputs/results/<scenario_name>/<experiment_name>/contribution.parquet
+```
+
+想定される列：
 
 - `player_id`
 - `phi_shapley`
@@ -481,40 +456,49 @@ CSV / Parquet 形式で保存：
 ## 9. 拡張：他フレームワーク・他論文パターンの組込み方針
 
 - フレームワークは `GameType` と `ValueFunction` 実装で切り替え可能にする。
-- Damage Reduction: `DamageReductionValue`
-- Credit Allocation: `CreditAllocationValue`
+  - Protection: `ProtectionValue` 系
+  - Damage Reduction: `DamageReductionValue` 系
+  - Credit Allocation: `CreditAllocationValue` 系
 - 論文パターンは `scenarios/<paper_short_name>/` として追加する。
-- ネットワーク構造・パラメータの違いは `network_definition.py` と `config_schema.py` に閉じ込める。
-- 可能な限り `core/` の再利用を徹底し、「論文ごとの固有ロジック」だけを scenario 側に寄せる。
+- ネットワーク構造・パラメータの違いは
+  - `network_definition.py`
+  - `config_schema.py`
+  に閉じ込める。
+- 可能な限り `core/` の再利用を徹底し、
+  「論文ごとの固有ロジック」だけを scenario 側に寄せる。
 
 Buldyrev2010 はその第1例として、
 
 - 2層相互依存ネットワーク
-- 防護型ゲーム（`PROTECTION`）
+- 防護型ゲーム（`GameType.PROTECTION`）
 - 特性関数 = MCGC サイズの期待値
 
-を実装する。
+を採用している。詳細は `docs/scenario_buldyrev2010.md` を参照。
 
 ---
 
-## 10. 実装順序（Buldyrev2010 パターン）
+## 10. 実装順序（全体ガイド）
 
-1. `core/` の基盤クラス・エンジン実装
-   - `NetworkLayer`, `InterdependentSystem`
-   - `percolation.py`, `cascade_engine.py`
-   - `ValueFunction` 抽象, `contribution_shapley.py`
-2. `scenarios/buldyrev2010/` 実装
-   - `network_definition.py`（ER / SF / RR）
-   - `value_protection.py`（防護型ゲーム）
-   - `visualization.py`
-3. `configs/buldyrev2010/*.yaml` の定義と `experiment_runner.py` からの実験実行
-4. Shapley 値計算 + 可視化（ノード重要度ランキング）
-5. `docs/scenario_buldyrev2010.md` で
+本リポジトリに新しい論文パターンを追加するときは、次の順序を基本とする。
+
+1. **core/ の基盤クラス・エンジンを確認／拡張**
+   - `NetworkLayer`, `MultiLayerNetwork`, `InterdependentSystem`
+   - 必要であれば `percolation.py`, `cascade_engine.py` にロジックを追加
+   - `ValueFunction` 抽象, `contribution_shapley.py`, `contribution_lexcel.py` を再利用
+2. **scenarios/<paper_short_name>/ を実装**
+   - `network_definition.py`（ネットワーク生成／読み込み）
+   - 各フレームワーク向けの `ValueFunction` 実装（Protection / Damage Reduction / Credit Allocation）
+   - 必要な可視化・後処理モジュール（`visualization.py`, `postprocess_metrics.py` 等）
+3. **configs/<paper_short_name>/*.yaml を定義し、experiment_runner から実験実行**
+   - シナリオ固有の config schema（`config_schema.py`）で読み込む。
+4. **Shapley 値計算 + 可視化（貢献度分析）**
+   - core の `estimate_shapley` / `rank_players_lexcel` を利用。
+5. **docs/scenario_<paper_short_name>.md で**
    - 論文の数理モデル
    - 実装上の対応関係
    - パラメータのデフォルト値
+   を整理し、共通フレームワーク（本ドキュメント）との対応を明示する。
 
-を整理する。
-
-以上を基本骨格とし、他の論文パターン（防護型・被害削減量・クレジット配分）も同一の構造・インターフェース上で拡張していく。
+以上を基本骨格とし、他の論文パターン（防護型・被害削減量・クレジット配分）も
+同一の「プレイヤー → v → 貢献度」フロー上で拡張していく。
 
