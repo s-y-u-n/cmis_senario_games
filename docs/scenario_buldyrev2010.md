@@ -144,9 +144,11 @@ def build_sf_system(n: int, lambda_: float, k_min: int, seed: int) -> Interdepen
     ...
 
 
-def build_real_italy_system(path_power: str,
-                            path_comm: str,
-                            path_dep: str) -> InterdependentSystem:
+def build_real_italy_system(power_nodes_path: str,
+                            power_edges_path: str,
+                            comm_nodes_path: str,
+                            comm_edges_path: str,
+                            dep_mapping_path: str) -> InterdependentSystem:
     ...
 ```
 
@@ -243,6 +245,27 @@ def summarize_v_results(results_df: pd.DataFrame) -> pd.DataFrame:
   - `percolation.survival_prob` の値を変化させ、p と MCGC サイズの関係や p_c 近傍の挙動を調べる。
 - `node_importance_shapley.yaml`:
   - ノード（またはノードペア）の Shapley 値を評価し、レジリエンスへの貢献度ランキングを得る。
+- `italy_case_basic_run.yaml`:
+  - Italy case（real_italy ネットワーク）で、単一シナリオ v(S) を評価する最小実験。
+  - `mode: "single_run"` として
+    - N が小さい場合（デフォルトでは `max_full_enum_players <= 16`）は、
+      すべての S ⊆ {0,…,N-1} について v(S) を評価し、
+    - N が大きい場合は S = ∅（全ノード「守らない」）だけを評価し、
+    - いずれの場合も 1 回のカスケード履歴を保存する。
+
+代表的な出力：
+
+- `outputs/results/buldyrev2010/italy_case_study/basic_run/value.csv`
+  - 列：`scenario_name`, `game_type`, `coalition_id`, `node_0`, ..., `node_{N-1}`, `v_value`
+  - Italy case（N=12）のデフォルトでは、全 2^12 通りの coalition が行として並ぶ。
+    - `coalition_id = "coalition_0"` が S = ∅（全 `node_i = False`）に対応。
+    - `coalition_id = "coalition_k"` のビット表現が、各 `node_i` 列のフラグに対応。
+  - `v_value` が「対応する S を守ったときの MCGC 相対サイズの期待値」に相当。
+- `outputs/results/buldyrev2010/italy_case_study/basic_run/history.csv`
+  - 列：`step`, `alive_A`, `alive_B`, `mcgc`
+  - Buldyrev 型カスケードの各ステップにおける生存ノード数・MCGC サイズ
+- `outputs/figures/buldyrev2010/italy_case_study/history_curve.png`
+  - x: step, y: alive_A / alive_B / mcgc の 3 曲線
 
 ---
 
@@ -276,4 +299,3 @@ Buldyrev2010 シナリオを実装する際の推奨ステップは次の通り�
 - MCGC 計算・カスケードアルゴリズムの pseudo code 化と検証。
 - 実データ（イタリア停電）の入手元と前処理仕様の整理。
 - 「ノード vs ノードペア」をプレイヤー定義として切り替えるための設定項目・実装方針の整理。
-

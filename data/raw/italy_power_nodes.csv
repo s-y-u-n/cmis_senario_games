@@ -1,0 +1,14 @@
+power_id,name,x,y
+0,NorthWest_1,0.25,0.95
+1,North_1,0.45,0.90
+2,NorthEast_1,0.65,0.88
+3,CenterNorth_1,0.50,0.78
+4,Center_1,0.55,0.65
+5,Center_2,0.45,0.58
+6,CenterSouth_1,0.50,0.50
+7,South_1,0.55,0.40
+8,South_2,0.50,0.30
+9,South_3,0.48,0.22
+10,South_4,0.52,0.15
+11,SouthExtreme_1,0.55,0.08
+

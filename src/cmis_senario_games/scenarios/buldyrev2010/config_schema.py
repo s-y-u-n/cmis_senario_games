@@ -24,9 +24,12 @@ class BuldyrevNetworkConfig:
     lambda_: float | None = None
     k_min: int | None = None
     seed: int | None = None
-    path_power: str | None = None
-    path_comm: str | None = None
-    path_dep: str | None = None
+    # For type == "real_italy"
+    power_nodes_path: str | None = None
+    power_edges_path: str | None = None
+    comm_nodes_path: str | None = None
+    comm_edges_path: str | None = None
+    dep_mapping_path: str | None = None
 
 
 @dataclass
@@ -67,4 +70,3 @@ def load_buldyrev_experiment_config(path: str | Path) -> BuldyrevExperimentConfi
         value_function=value_fn_cfg,
         shapley=shapley_cfg,
     )
-

@@ -1,0 +1,7 @@
+scenario_config: "configs/buldyrev2010/italy_case_study.yaml"
+
+mode: "single_run"
+
+output_dir: "outputs/results/buldyrev2010/italy_case_study/basic_run/"
+figure_dir: "outputs/figures/buldyrev2010/italy_case_study/"
+

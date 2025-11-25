@@ -1,17 +1,23 @@
-scenario_name: "buldyrev2010_italy_case"
+scenario_name: "buldyrev2010_italy_case_study"
 game_type: "protection"
+
 network:
   type: "real_italy"
-  path_power: "data/raw/italy_power.csv"
-  path_comm: "data/raw/italy_comm.csv"
-  path_dep: "data/raw/italy_dependencies.csv"
+  power_nodes_path: "data/raw/italy_power_nodes.csv"
+  power_edges_path: "data/raw/italy_power_edges.csv"
+  comm_nodes_path: "data/raw/italy_comm_nodes.csv"
+  comm_edges_path: "data/raw/italy_comm_edges.csv"
+  dep_mapping_path: "data/raw/italy_dep_mapping.csv"
+
 percolation:
-  survival_prob: 0.8
-  random_seed: 321
+  survival_prob: 0.85        # 初期故障率 15% 程度
+  random_seed: 123
+
 value_function:
-  num_scenarios: 100
+  num_scenarios: 200         # Monte Carlo サンプル数
   performance_metric: "mcgc_size"
+
 shapley:
-  num_samples: 500
-  random_seed: 2001
+  num_samples: 300           # Shapley の permutation サンプル数
+  random_seed: 999
 

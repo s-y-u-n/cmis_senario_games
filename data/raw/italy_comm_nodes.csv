@@ -1,0 +1,14 @@
+comm_id,name,x,y
+0,BackboneNorth_1,0.55,0.96
+1,BackboneNorth_2,0.70,0.90
+2,BackboneNorthEast_1,0.80,0.86
+3,BackboneCenterNorth_1,0.72,0.78
+4,BackboneCenter_1,0.75,0.67
+5,BackboneCenter_2,0.70,0.60
+6,BackboneCenterSouth_1,0.72,0.52
+7,BackboneSouth_1,0.78,0.42
+8,BackboneSouth_2,0.75,0.33
+9,BackboneSouth_3,0.72,0.25
+10,BackboneSouth_4,0.75,0.17
+11,BackboneSouthExtreme_1,0.78,0.10
+

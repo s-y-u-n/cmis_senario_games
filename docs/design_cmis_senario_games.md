@@ -419,29 +419,36 @@ class ValueResult:
     v_value: float
 ```
 
-CSV / Parquet 形式で保存：
+CSV 形式で保存する際は、`coalition_mask` を展開して
+
+- 各プレイヤー（ノード）ごとのフラグ列
+  - `node_0`, `node_1`, ..., `node_{N-1}`（True/False）
+- 価値関数の値 `v_value`
+
+を 1 行にまとめる：
 
 ```text
-outputs/results/<scenario_name>/<experiment_name>/v_values.parquet
+scenario_name, game_type, coalition_id, node_0, node_1, ..., node_{N-1}, v_value
 ```
 
-Buldyrev2010 の例：
+出力パスの例：
 
-- `outputs/results/buldyrev2010/node_importance_shapley/v_values.parquet`
+```text
+outputs/results/<scenario_name>/<experiment_name>/value.csv
+```
 
-列例：
+Buldyrev2010 / Italy case の単一シナリオ実行（`italy_case_basic_run`）では：
 
-- `scenario_name`
-- `game_type`
-- `coalition_id`
-- `v_value`
+- `outputs/results/buldyrev2010/italy_case_study/basic_run/value.csv`
+  - `coalition_id = "empty"`（すべての node_i が False）
+  - `v_value` = 「何も守らないとき」の MCGC 相対サイズの期待値
 
 ### 8.2 貢献度（Shapley / lex-cel）出力
 
 同様に、貢献度の結果を保存する：
 
 ```text
-outputs/results/<scenario_name>/<experiment_name>/contribution.parquet
+outputs/results/<scenario_name>/<experiment_name>/contribution.csv
 ```
 
 想定される列：
@@ -501,4 +508,3 @@ Buldyrev2010 はその第1例として、
 
 以上を基本骨格とし、他の論文パターン（防護型・被害削減量・クレジット配分）も
 同一の「プレイヤー → v → 貢献度」フロー上で拡張していく。
-
