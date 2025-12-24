@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.DS_Store
+
+# Poetry / packaging
+.venv/
+dist/
+build/
+*.egg-info/
+
+# Outputs (can be huge)
+outputs/
+sim_contribution/outputs/
+**/outputs/
